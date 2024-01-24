@@ -3,36 +3,28 @@
 #include <WebServer.h>
 
 #define DHTTYPE DHT22
-#define DHTPIN 21
+const int DHTPIN = 21;
 
-#define RED_LED 22
-#define WHITE_LED 23
+const int RED_LED = 22;
+const int WHITE_LED = 23;
 
-#define TRIG_PIN 12
-#define ECHO_PIN 14
+const int TRIG_PIN = 12;
+const int ECHO_PIN = 14;
 
 bool redState = false;
 bool whiteState = false;
 
-float temperature;
-float humidity;
+float temperature = 0;
+float humidity = 0;
 
-float distance;
-
-char texteEtatLed[2][10] = {"RED ON", "RED OFF"};
+float distance = 0;
 
 const char* ssid = "Vmax";
 const char* password = "";
+
 WebServer server(80);
 
 DHT dht(DHTPIN, DHTTYPE);
-
-unsigned long previousMillisLED = 0;
-unsigned long previousMillisSensor = 0;
-unsigned long previousMillisUltrasonic = 0;
-const long intervalLED = 1000;
-const long intervalSensor = 2000;
-const long intervalUltrasonic = 2000;
 
 void handleRoot(){
   String page = "<!DOCTYPE html>";
@@ -75,10 +67,12 @@ void handleRoot(){
   page += "<br/>";
   page += "<br/>";
   page += "<p>TEMPERATURE = "; page += temperature; page += " - C</p>";
-  page += "<br/>";
-  page += "<p>HUMIDITY = "; page += humidity; page += " - %</p>";
-  page += "<br/>";
+  page += "<p>HUMIDITY = "; page += humidity; page += " %</p>";
   page += "<p>ULTRASON DISTANCE = "; page += distance; page += " cm</p>";
+  page += "<br/>";
+  page += "<br/>";
+  page += "<a href='/get-all-data'>Update</a>";
+  page += "<br/>";
   page += "<br/>";
   page += "</body>";
   page += "</html>";
@@ -87,6 +81,7 @@ void handleRoot(){
   server.send(200, "text/html", page);
 }
 
+// RED LED
 void handleRedOn(){
   redState = true;
   digitalWrite(RED_LED, redState);
@@ -101,6 +96,7 @@ void handleRedOff(){
   server.send(303);
 }
 
+// WHITE LED
 void handleWhiteOn(){
   whiteState = true;
   digitalWrite(WHITE_LED, whiteState);
@@ -115,6 +111,39 @@ void handleWhiteOff(){
   server.send(303);
 }
 
+// GET DATA
+void getTemperatureAndHumidity(){
+  temperature = dht.readTemperature();
+  humidity = dht.readHumidity();
+  if (isnan(humidity) || isnan(temperature)) {
+    Serial.println(F("Echec reception"));
+    server.send(404);
+    return;
+  }
+  else{
+    server.sendHeader("Location", "/");
+    server.send(303);
+  }
+}
+
+void getDistance(){
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  distance = (duration * 0.0343) / 2;
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void getAllData(){
+  getTemperatureAndHumidity();
+  getDistance();
+}
+
+// ERROR
 
 void handleNotFound(){
   server.send(404, "text/plain","404: Not found!");
@@ -148,58 +177,21 @@ void setup() {
   
   server.on("/", handleRoot);
 
-  server.on("/red-on",handleRedOn);
-  server.on("/red-off",handleRedOff);
+  server.on("/red-on", handleRedOn);
+  server.on("/red-off", handleRedOff);
 
-  server.on("/white-on",handleWhiteOn);
-  server.on("/white-off",handleWhiteOff);
+  server.on("/white-on", handleWhiteOn);
+  server.on("/white-off", handleWhiteOff);
+
+  server.on("/get-distance", getDistance);
+  server.on("/get-temperature-humidity", getTemperatureAndHumidity);
+  server.on("/get-all-data", getAllData);
 
   server.onNotFound(handleNotFound);
   server.begin();
   Serial.println("Serveur web actif! ");
-
 }
 
 void loop() {
   server.handleClient();
-  getHumidityAndTemperature();
-  measureDistance();
-}
-
-void getHumidityAndTemperature() {
-  unsigned long currentMillis = millis();
-
-  if (currentMillis - previousMillisSensor >= intervalSensor) {
-    previousMillisSensor = currentMillis;
-
-    humidity = dht.readHumidity();
-    temperature = dht.readTemperature();
-
-    if (isnan(humidity) || isnan(temperature)) {
-      Serial.println(F("Echec reception"));
-      return;
-    }
-  }
-}
-
-
-void measureDistance() {
-  unsigned long currentMillis = millis();
-
-  if (currentMillis - previousMillisUltrasonic >= intervalUltrasonic) {
-    previousMillisUltrasonic = currentMillis;
-
-    digitalWrite(TRIG_PIN, LOW);
-    delayMicroseconds(2);
-    digitalWrite(TRIG_PIN, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(TRIG_PIN, LOW);
-
-    long duration = pulseIn(ECHO_PIN, HIGH);
-    distance = (duration * 0.0343) / 2;
-
-    //Serial.print("\nDistance ultrason: ");
-    //Serial.print(distance);
-    //Serial.println(" cm");
-  }
 }
